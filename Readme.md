@@ -180,7 +180,7 @@ AniList's limits (proxy stays safely below):
 | Mode | AniList Limit | Proxy limit per slot |
 |---|---|---|
 | Anonymous | 60 req/min | 55 req/min |
-| Authenticated | 90 req/min | 84 req/min |
+| Authenticated | 90 req/min | 85 req/min |
 
 With 6 pool slots per instance, effective capacity per instance is up to **330 anon / 504 auth req/min** before any 429 is expected.
 

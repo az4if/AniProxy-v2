@@ -1,0 +1,16 @@
+{
+  "name": "anilist-proxy",
+  "version": "2.0.0",
+  "description": "A proxy server for Anilist GraphQL API with rate-limit bypass and multi-user support",
+  "main": "api/graphql.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "cross-fetch": "^4.1.0"
+  },
+  "devDependencies": {
+    "vercel": "^32.3.0"
+  }
+}

@@ -245,4 +245,4 @@ The proxy paces itself against a slightly lower per-identity threshold (55 / 85)
 
 ## 📄 License
 
-MIT
+[MIT](./LICENSE)

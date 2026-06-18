@@ -17,6 +17,8 @@
 
 ## ✨ What's new in v2
 
+> **v1:** [Itzmepromgitman/Anilist-Api](https://github.com/Itzmepromgitman/Anilist-Api) — 🚀 Anilist GraphQL Proxy, a lightning-fast serverless proxy for the Anilist API. ⚡ Deploy to Vercel in seconds with CORS support, authentication handling, and zero config required. Perfect for anime web apps! 🎌✨
+
 | Feature | v1 | v2 |
 |---|---|---|
 | CORS support | ✅ | ✅ |

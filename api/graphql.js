@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Anilist GraphQL Proxy  –  with rate-limit bypass & multi-user support
+// Anilist GraphQL Proxy  –  rate-limit bypass, identity pool & Upstash caching
 // Strategy:
 //   1. A pool of "virtual identities" (User-Agent + Accept-Encoding combos)
 //      are round-robined per incoming request so no two consecutive hits share
@@ -12,9 +12,16 @@
 //   4. Vercel spins many isolated serverless instances (each with its own IP),
 //      so the pool effectively multiplies across the fleet – maximising
 //      throughput at scale.
+//   5. Anonymous queries are cached in Upstash Redis to minimise upstream hits
+//      entirely. Mutations and authenticated requests always bypass the cache.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ANILIST_URL = process.env.ANILIST_API_URL || 'https://graphql.anilist.co/';
+
+// ── Upstash Redis config ───────────────────────────────────────────────────
+const UPSTASH_URL   = process.env.UPSTASH_REDIS_REST_URL;
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const CACHE_TTL     = parseInt(process.env.CACHE_TTL_SECONDS || '300', 10); // 5-min default
 
 // ── Rate-limit config ──────────────────────────────────────────────────────
 const WINDOW_MS        = 60_000;   // 1-minute sliding window
@@ -46,11 +53,11 @@ const ACCEPT_ENCODINGS = [
 
 // Build the pool – one slot per User-Agent
 const POOL = USER_AGENTS.map((ua, i) => ({
-  id: i,
-  userAgent: ua,
+  id:             i,
+  userAgent:      ua,
   acceptEncoding: ACCEPT_ENCODINGS[i % ACCEPT_ENCODINGS.length],
   // Sliding window: array of timestamps of recent requests
-  timestamps: [],
+  timestamps:     [],
 }));
 
 let poolCursor = 0; // global round-robin cursor (per instance)
@@ -77,7 +84,7 @@ function recordUse(identity) {
 function pickIdentity(isAuthenticated, excludeIds = []) {
   const poolSize = POOL.length;
   for (let offset = 0; offset < poolSize; offset++) {
-    const idx = (poolCursor + offset) % poolSize;
+    const idx      = (poolCursor + offset) % poolSize;
     const identity = POOL[idx];
     if (excludeIds.includes(identity.id)) continue;
     if (canUse(identity, isAuthenticated)) {
@@ -92,24 +99,61 @@ function pickIdentity(isAuthenticated, excludeIds = []) {
 // ── Sleep helper ───────────────────────────────────────────────────────────
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// ── Upstash cache helpers ──────────────────────────────────────────────────
+// Deterministic cache key: djb2-style hash over query + variables + operationName
+function hashBody(query, variables, operationName) {
+  const raw = JSON.stringify({ q: query, v: variables ?? null, op: operationName ?? null });
+  let h = 5381;
+  for (let i = 0; i < raw.length; i++) {
+    h = (Math.imul(h, 31) + raw.charCodeAt(i)) | 0;
+  }
+  return 'ani:' + (h >>> 0).toString(16);
+}
+
+async function cacheGet(key) {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return null;
+  try {
+    const res = await fetch(`${UPSTASH_URL}/get/${encodeURIComponent(key)}`, {
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+    });
+    const { result } = await res.json();
+    return result ? JSON.parse(result) : null;
+  } catch {
+    return null; // cache errors are non-fatal
+  }
+}
+
+async function cacheSet(key, value) {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return;
+  try {
+    await fetch(`${UPSTASH_URL}/pipeline`, {
+      method:  'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify([['SET', key, JSON.stringify(value), 'EX', CACHE_TTL]]),
+    });
+  } catch {
+    // cache errors are non-fatal
+  }
+}
+
 // ── Build request headers for an identity ────────────────────────────────
 function buildHeaders(identity, authHeader) {
   return {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'User-Agent': identity.userAgent,
+    'Content-Type':    'application/json',
+    'Accept':          'application/json',
+    'User-Agent':      identity.userAgent,
     'Accept-Encoding': identity.acceptEncoding,
     'Accept-Language': 'en-US,en;q=0.9',
-    'Origin': 'https://anilist.co',
-    'Referer': 'https://anilist.co/',
-    ...(authHeader ? { 'Authorization': authHeader } : {}),
+    'Origin':          'https://anilist.co',
+    'Referer':         'https://anilist.co/',
+    ...(authHeader ? { Authorization: authHeader } : {}),
   };
 }
 
 // ── Core proxy fetch with retry logic ─────────────────────────────────────
 async function fetchWithRetry(body, authHeader) {
   const isAuthenticated = Boolean(authHeader);
-  const exhaustedIds = [];
+  const exhaustedIds    = [];
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const identity = pickIdentity(isAuthenticated, exhaustedIds);
@@ -125,9 +169,9 @@ async function fetchWithRetry(body, authHeader) {
 
     try {
       const response = await fetch(ANILIST_URL, {
-        method: 'POST',
+        method:  'POST',
         headers: buildHeaders(identity, authHeader),
-        body: JSON.stringify(body),
+        body:    JSON.stringify(body),
       });
 
       // AniList rate-limited THIS identity – rotate to the next one
@@ -142,6 +186,7 @@ async function fetchWithRetry(body, authHeader) {
           await sleep(backOff);
           continue;
         }
+
         // Exhausted retries – pass 429 back to client
         const errData = await response.json().catch(() => ({}));
         return { status: 429, data: errData, retryAfter };
@@ -162,7 +207,7 @@ async function fetchWithRetry(body, authHeader) {
 // ── Vercel serverless handler ──────────────────────────────────────────────
 export default async function handler(req, res) {
   // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin',  '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
@@ -181,20 +226,46 @@ export default async function handler(req, res) {
 
   try {
     const authHeader = req.headers.authorization || null;
+    const isMutation = query.trim().toLowerCase().startsWith('mutation');
+
+    // ── Cache path: anonymous queries only, never mutations ────────────────
+    if (!authHeader && !isMutation) {
+      const cacheKey = hashBody(query, variables, operationName);
+      const cached   = await cacheGet(cacheKey);
+
+      if (cached) {
+        res.setHeader('X-Cache', 'HIT');
+        return res.status(200).json(cached);
+      }
+
+      const { status, data, retryAfter } = await fetchWithRetry(
+        { query, variables, operationName },
+        authHeader
+      );
+
+      if (retryAfter) res.setHeader('Retry-After', String(retryAfter));
+
+      if (status === 200) {
+        res.setHeader('X-Cache', 'MISS');
+        await cacheSet(cacheKey, data);
+      }
+
+      return res.status(status).json(data);
+    }
+
+    // ── Authenticated requests and mutations bypass the cache ──────────────
     const { status, data, retryAfter } = await fetchWithRetry(
       { query, variables, operationName },
       authHeader
     );
 
-    if (retryAfter) {
-      res.setHeader('Retry-After', String(retryAfter));
-    }
+    if (retryAfter) res.setHeader('Retry-After', String(retryAfter));
 
-    // Surface pool saturation info in debug mode
+    // Surface pool utilisation in debug mode
     if (process.env.DEBUG === 'true') {
-      const now = Date.now();
+      const now       = Date.now();
       const poolStats = POOL.map(id => ({
-        id: id.id,
+        id:             id.id,
         recentRequests: id.timestamps.filter(t => t > now - WINDOW_MS).length,
       }));
       res.setHeader('X-Pool-Stats', JSON.stringify(poolStats));
@@ -205,7 +276,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('[AniList Proxy] Fatal error:', error);
     return res.status(500).json({
-      error: 'Proxy request failed',
+      error:   'Proxy request failed',
       message: error.message,
     });
   }

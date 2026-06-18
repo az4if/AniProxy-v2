@@ -1,536 +1,698 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Anilist GraphQL Proxy | Fast & Reliable API Proxy</title>
-    <meta name="description" content="Lightning-fast serverless proxy for the Anilist GraphQL API. CORS enabled, authentication support, zero configuration required.">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AniProxy — Anilist GraphQL Proxy</title>
+  <meta name="description" content="Lightning-fast serverless proxy for the Anilist GraphQL API. CORS enabled, authentication support, zero configuration required." />
+  <link rel="icon" type="image/svg+xml" href="https://anilist-6aef5d.tiiny.site/anilist.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: #0a0a0a;
-            color: #ffffff;
-            line-height: 1.6;
-            overflow-x: hidden;
-        }
+  <style>
+    /* ─── Design Tokens ─────────────────────────────────────────── */
+    :root {
+      --al-blue:    #02A9FF;
+      --al-cyan:    #0CF2FF;
+      --al-purple:  #7B52F4;
+      --al-pink:    #FF5EA3;
+      --surface-0:  #0b0d14;
+      --surface-1:  #12151f;
+      --surface-2:  #1a1e2e;
+      --surface-3:  #222740;
+      --border:     rgba(2,169,255,.15);
+      --text-hi:    #ffffff;
+      --text-mid:   rgba(255,255,255,.7);
+      --text-lo:    rgba(255,255,255,.4);
+      --radius-sm:  8px;
+      --radius-md:  14px;
+      --radius-lg:  22px;
+      --glow-blue:  0 0 40px rgba(2,169,255,.25);
+      --glow-sm:    0 0 16px rgba(2,169,255,.18);
+    }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
-        }
+    /* ─── Reset ─────────────────────────────────────────────────── */
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+    html { scroll-behavior: smooth; }
 
-        /* Animated Background */
-        .bg-animation {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: -1;
-            background: radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
-                        radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.3) 0%, transparent 50%),
-                        radial-gradient(circle at 40% 40%, rgba(120, 219, 226, 0.3) 0%, transparent 50%);
-        }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--surface-0);
+      color: var(--text-hi);
+      line-height: 1.65;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
 
-        .bg-animation::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: 
-                linear-gradient(45deg, transparent 30%, rgba(120, 119, 198, 0.1) 50%, transparent 70%),
-                linear-gradient(-45deg, transparent 30%, rgba(255, 119, 198, 0.1) 50%, transparent 70%);
-            animation: shimmer 8s ease-in-out infinite;
-        }
+    ::selection { background: rgba(2,169,255,.3); color: #fff; }
 
-        @keyframes shimmer {
-            0%, 100% { opacity: 0.5; transform: translateX(-50px); }
-            50% { opacity: 1; transform: translateX(50px); }
-        }
+    /* ─── Ambient BG ─────────────────────────────────────────────── */
+    .bg-orbs {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      overflow: hidden;
+    }
+    .orb {
+      position: absolute; border-radius: 50%;
+      filter: blur(90px); opacity: .18;
+      animation: drift 18s ease-in-out infinite alternate;
+    }
+    .orb-1 { width:600px; height:600px; background:#02A9FF; top:-180px; left:-160px; animation-duration:20s; }
+    .orb-2 { width:500px; height:500px; background:#7B52F4; top:40%; right:-180px; animation-duration:25s; animation-delay:-8s; }
+    .orb-3 { width:400px; height:400px; background:#0CF2FF; bottom:-120px; left:35%; animation-duration:22s; animation-delay:-14s; opacity:.1; }
 
-        /* Header */
-        .header {
-            padding: 20px 0;
-            backdrop-filter: blur(10px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
+    @keyframes drift {
+      from { transform: translate(0,0) scale(1); }
+      to   { transform: translate(40px,30px) scale(1.08); }
+    }
 
-        .nav {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+    /* ─── Layout ─────────────────────────────────────────────────── */
+    .wrap { position: relative; z-index: 1; }
+    .container { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
 
-        .logo {
-            font-size: 1.5rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
+    /* ─── NAV ────────────────────────────────────────────────────── */
+    .nav-bar {
+      position: sticky; top: 0; z-index: 100;
+      padding: 0 24px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(11,13,20,.82);
+      backdrop-filter: blur(20px) saturate(160%);
+    }
+    .nav-inner {
+      max-width: 1160px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 64px; gap: 24px;
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 10px;
+      text-decoration: none; font-weight: 800; font-size: 1.15rem;
+      color: var(--text-hi); letter-spacing: -.3px;
+    }
+    .nav-logo img { width: 30px; height: 30px; filter: brightness(0) invert(1); }
+    .nav-logo span { background: linear-gradient(90deg,#02A9FF,#0CF2FF); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
 
-        .nav-links {
-            display: flex;
-            gap: 30px;
-            list-style: none;
-        }
+    .nav-links {
+      display: flex; align-items: center; gap: 4px; list-style: none;
+    }
+    .nav-links a {
+      color: var(--text-mid); text-decoration: none; font-size: .9rem; font-weight: 500;
+      padding: 6px 14px; border-radius: var(--radius-sm);
+      transition: color .2s, background .2s;
+    }
+    .nav-links a:hover { color: #fff; background: rgba(255,255,255,.07); }
 
-        .nav-links a {
-            color: rgba(255, 255, 255, 0.8);
-            text-decoration: none;
-            font-weight: 500;
-            transition: all 0.3s ease;
-        }
+    .nav-cta {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .btn-nav-gh {
+      display: flex; align-items: center; gap: 7px;
+      padding: 7px 16px; border-radius: var(--radius-sm);
+      background: var(--surface-3); color: var(--text-mid);
+      text-decoration: none; font-size: .875rem; font-weight: 500;
+      border: 1px solid var(--border); transition: all .2s;
+    }
+    .btn-nav-gh:hover { background: var(--surface-2); color: #fff; border-color: rgba(2,169,255,.3); }
+    .btn-nav-deploy {
+      display: flex; align-items: center; gap: 7px;
+      padding: 7px 18px; border-radius: var(--radius-sm);
+      background: linear-gradient(135deg,#02A9FF,#0CF2FF);
+      color: #0b0d14; font-size: .875rem; font-weight: 700;
+      text-decoration: none; transition: all .2s;
+      box-shadow: 0 0 20px rgba(2,169,255,.3);
+    }
+    .btn-nav-deploy:hover { box-shadow: 0 0 32px rgba(2,169,255,.5); transform: translateY(-1px); }
 
-        .nav-links a:hover {
-            color: #667eea;
-        }
+    /* hamburger */
+    .nav-toggle { display:none; background:none; border:none; cursor:pointer; padding:6px; color:#fff; }
+    .nav-toggle svg { display:block; }
 
-        /* Hero Section */
-        .hero {
-            padding: 120px 0 80px;
-            text-align: center;
-        }
+    /* ─── HERO ───────────────────────────────────────────────────── */
+    .hero {
+      padding: 110px 0 80px;
+      text-align: center;
+    }
 
-        .hero h1 {
-            font-size: clamp(3rem, 8vw, 5rem);
-            font-weight: 800;
-            margin-bottom: 20px;
-            background: linear-gradient(135deg, #fff 0%, #667eea 50%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            line-height: 1.2;
-        }
+    .hero-eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(2,169,255,.08); border: 1px solid rgba(2,169,255,.25);
+      padding: 6px 16px; border-radius: 100px;
+      font-size: .8rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+      color: var(--al-blue); margin-bottom: 28px;
+    }
+    .hero-eyebrow-dot {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--al-blue);
+      animation: blink 2s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-        .hero p {
-            font-size: 1.3rem;
-            color: rgba(255, 255, 255, 0.8);
-            margin-bottom: 40px;
-            max-width: 600px;
-            margin-left: auto;
-            margin-right: auto;
-        }
+    .hero-logo-wrap {
+      display: flex; justify-content: center; margin-bottom: 28px;
+    }
+    .hero-logo-wrap img {
+      width: 72px; height: 72px;
+      filter: brightness(0) invert(1) drop-shadow(0 0 24px rgba(2,169,255,.6));
+      animation: float 5s ease-in-out infinite;
+    }
+    @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
 
-        .cta-buttons {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-            flex-wrap: wrap;
-            margin-bottom: 60px;
-        }
+    .hero h1 {
+      font-size: clamp(2.6rem, 6vw, 4.6rem);
+      font-weight: 900; letter-spacing: -1.5px;
+      line-height: 1.08; margin-bottom: 22px;
+    }
+    .hero h1 .word-anilist { color: var(--al-blue); }
+    .hero h1 .word-graphql { background: linear-gradient(135deg,#02A9FF,#0CF2FF,#7B52F4); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
 
-        .btn {
-            padding: 15px 30px;
-            border-radius: 50px;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 1.1rem;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            border: none;
-            cursor: pointer;
-        }
+    .hero-sub {
+      font-size: 1.15rem; color: var(--text-mid);
+      max-width: 520px; margin: 0 auto 40px;
+      line-height: 1.75;
+    }
 
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
-        }
+    .hero-actions {
+      display: flex; align-items: center; justify-content: center; gap: 14px;
+      flex-wrap: wrap; margin-bottom: 72px;
+    }
 
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 20px 40px rgba(102, 126, 234, 0.4);
-        }
+    .btn { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 600; border: none; cursor: pointer; transition: all .25s; }
 
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(10px);
-        }
+    .btn-primary {
+      padding: 13px 28px; border-radius: var(--radius-md);
+      background: linear-gradient(135deg, #02A9FF, #0CF2FF);
+      color: #0b0d14; font-size: 1rem;
+      box-shadow: 0 4px 24px rgba(2,169,255,.35);
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 36px rgba(2,169,255,.5); }
 
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.2);
-            transform: translateY(-2px);
-        }
+    .btn-ghost {
+      padding: 13px 28px; border-radius: var(--radius-md);
+      background: transparent; color: var(--text-hi); font-size: 1rem;
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: var(--surface-2); border-color: rgba(2,169,255,.3); }
 
-        /* API Status */
-        .api-status {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            background: rgba(34, 197, 94, 0.1);
-            border: 1px solid rgba(34, 197, 94, 0.3);
-            padding: 10px 20px;
-            border-radius: 25px;
-            margin-bottom: 40px;
-        }
+    /* endpoint chip */
+    .endpoint-chip {
+      display: inline-flex; align-items: center; gap: 0;
+      background: var(--surface-1); border: 1px solid var(--border);
+      border-radius: var(--radius-md); overflow: hidden;
+      font-family: 'JetBrains Mono', monospace; font-size: .85rem;
+      box-shadow: var(--glow-sm);
+    }
+    .endpoint-method {
+      background: rgba(2,169,255,.15); color: var(--al-blue);
+      padding: 10px 14px; font-weight: 700; letter-spacing: .05em; font-size: .75rem;
+      border-right: 1px solid var(--border);
+    }
+    .endpoint-url { padding: 10px 16px; color: var(--text-mid); }
+    .endpoint-copy {
+      padding: 10px 14px; background: none; border: none; border-left: 1px solid var(--border);
+      color: var(--text-lo); cursor: pointer; transition: all .2s;
+      display: flex; align-items: center;
+    }
+    .endpoint-copy:hover { color: var(--al-blue); background: rgba(2,169,255,.07); }
 
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            background: #22c55e;
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
+    /* ─── STATS STRIP ────────────────────────────────────────────── */
+    .stats-strip {
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-1);
+      padding: 0;
+    }
+    .stats-inner {
+      max-width: 1160px; margin: 0 auto;
+      display: grid; grid-template-columns: repeat(4,1fr);
+    }
+    .stat-cell {
+      padding: 32px 24px; text-align: center;
+      border-right: 1px solid var(--border);
+      position: relative;
+    }
+    .stat-cell:last-child { border-right: none; }
+    .stat-val {
+      font-size: 2.1rem; font-weight: 900; letter-spacing: -1px;
+      background: linear-gradient(135deg,#02A9FF,#0CF2FF);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      display: block; line-height: 1;
+      margin-bottom: 6px;
+    }
+    .stat-lbl { font-size: .8rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-lo); }
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
+    /* ─── FEATURES ───────────────────────────────────────────────── */
+    .section { padding: 96px 0; }
+    .section-head { text-align: center; margin-bottom: 60px; }
+    .eyebrow {
+      display: inline-block; font-size: .72rem; font-weight: 700;
+      letter-spacing: .12em; text-transform: uppercase;
+      color: var(--al-blue); margin-bottom: 14px;
+    }
+    .section-head h2 {
+      font-size: clamp(1.8rem, 3.5vw, 2.8rem); font-weight: 800; letter-spacing: -.6px;
+      margin-bottom: 14px;
+    }
+    .section-head p { color: var(--text-mid); max-width: 480px; margin: 0 auto; }
 
-        /* Features Section */
-        .features {
-            padding: 80px 0;
-        }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
 
-        .section-title {
-            font-size: 2.5rem;
-            font-weight: 700;
-            text-align: center;
-            margin-bottom: 60px;
-            color: white;
-        }
+    .feat-card {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 32px 28px;
+      transition: all .3s ease;
+      position: relative; overflow: hidden;
+    }
+    .feat-card::before {
+      content:''; position:absolute; inset:0; opacity:0;
+      background: radial-gradient(circle at top left, rgba(2,169,255,.08), transparent 70%);
+      transition: opacity .3s;
+    }
+    .feat-card:hover { border-color: rgba(2,169,255,.35); transform: translateY(-4px); box-shadow: var(--glow-blue); }
+    .feat-card:hover::before { opacity: 1; }
 
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 30px;
-            margin-bottom: 60px;
-        }
+    .feat-icon {
+      width: 46px; height: 46px; border-radius: var(--radius-sm);
+      background: rgba(2,169,255,.1); border: 1px solid rgba(2,169,255,.2);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 20px; font-size: 1.3rem;
+    }
+    .feat-card h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 10px; }
+    .feat-card p { color: var(--text-mid); font-size: .93rem; line-height: 1.65; }
 
-        .feature-card {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            padding: 30px;
-            text-align: center;
-            transition: all 0.3s ease;
-        }
+    /* wide card */
+    .feat-card-wide {
+      grid-column: span 2;
+      display: flex; align-items: flex-start; gap: 24px;
+    }
+    .feat-card-wide .feat-icon { flex-shrink: 0; width:52px; height:52px; font-size:1.5rem; }
 
-        .feature-card:hover {
-            transform: translateY(-5px);
-            background: rgba(255, 255, 255, 0.1);
-            border-color: rgba(102, 126, 234, 0.3);
-        }
+    /* ─── CODE SECTION ───────────────────────────────────────────── */
+    .code-section { padding: 96px 0; background: var(--surface-1); }
 
-        .feature-icon {
-            font-size: 3rem;
-            margin-bottom: 20px;
-            display: block;
-        }
+    .tab-bar {
+      display: flex; gap: 4px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0; padding-bottom: 0;
+    }
+    .tab {
+      padding: 10px 20px; font-size: .875rem; font-weight: 600;
+      background: none; border: none; color: var(--text-lo);
+      cursor: pointer; border-bottom: 2px solid transparent;
+      margin-bottom: -1px; transition: all .2s;
+    }
+    .tab.active { color: var(--al-blue); border-bottom-color: var(--al-blue); }
+    .tab:hover:not(.active) { color: var(--text-hi); }
 
-        .feature-card h3 {
-            font-size: 1.3rem;
-            font-weight: 600;
-            margin-bottom: 15px;
-            color: white;
-        }
+    .code-panels { margin-top: 0; }
+    .code-panel { display: none; }
+    .code-panel.active { display: block; }
 
-        .feature-card p {
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 1rem;
-        }
+    .code-block {
+      background: var(--surface-0);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .code-top {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,.02);
+    }
+    .code-dots { display:flex; gap:6px; }
+    .code-dots span { width:10px; height:10px; border-radius:50%; }
+    .code-dots .d1 { background:#ff5f57; }
+    .code-dots .d2 { background:#ffbd2e; }
+    .code-dots .d3 { background:#28c840; }
+    .code-file { font-family:'JetBrains Mono',monospace; font-size:.78rem; color:var(--text-lo); }
 
-        /* Code Example Section */
-        .code-section {
-            padding: 80px 0;
-            background: rgba(0, 0, 0, 0.3);
-        }
+    .copy-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border-radius: var(--radius-sm);
+      background: var(--surface-3); border: 1px solid var(--border);
+      color: var(--text-lo); font-size: .78rem; font-weight: 600;
+      cursor: pointer; transition: all .2s; font-family: inherit;
+    }
+    .copy-btn:hover { color: var(--al-blue); border-color: rgba(2,169,255,.3); }
+    .copy-btn.copied { color: #22c55e; border-color: rgba(34,197,94,.3); }
 
-        .code-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 40px;
-            align-items: start;
-        }
+    .code-body {
+      padding: 24px 28px; overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .875rem; line-height: 1.75;
+    }
+    .ln { color: rgba(255,255,255,.18); user-select:none; margin-right:20px; }
+    .kw  { color: #7B52F4; }
+    .str { color: #0CF2FF; }
+    .fn  { color: #02A9FF; }
+    .cm  { color: rgba(255,255,255,.3); font-style:italic; }
+    .ky  { color: #FF9B54; }
+    .hl  { background: rgba(2,169,255,.08); display:block; margin: 0 -28px; padding: 0 28px; }
 
-        .code-block {
-            background: #1a1a1a;
-            border-radius: 15px;
-            overflow: hidden;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
+    /* ─── HOW IT WORKS ───────────────────────────────────────────── */
+    .flow-steps {
+      display: grid; grid-template-columns: repeat(3,1fr); gap: 0;
+      background: var(--surface-1); border-radius: var(--radius-lg);
+      border: 1px solid var(--border); overflow: hidden;
+    }
+    .flow-step {
+      padding: 40px 36px;
+      border-right: 1px solid var(--border);
+      position: relative;
+    }
+    .flow-step:last-child { border-right: none; }
+    .step-num {
+      font-size: .7rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
+      color: var(--al-blue); margin-bottom: 16px; display: block;
+    }
+    .step-arrow {
+      position: absolute; right: -14px; top: 50%;
+      transform: translateY(-50%);
+      background: var(--surface-0); border: 1px solid var(--border);
+      border-radius: 50%; width: 28px; height: 28px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .75rem; color: var(--al-blue); z-index:2;
+    }
+    .flow-step:last-child .step-arrow { display:none; }
+    .flow-step h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 10px; }
+    .flow-step p { font-size: .9rem; color: var(--text-mid); line-height:1.65; }
 
-        .code-header {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 15px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
+    /* ─── CTA BANNER ─────────────────────────────────────────────── */
+    .cta-banner {
+      background: linear-gradient(135deg, rgba(2,169,255,.12), rgba(123,82,244,.12));
+      border: 1px solid rgba(2,169,255,.25);
+      border-radius: var(--radius-lg);
+      padding: 64px 48px;
+      text-align: center;
+      position: relative; overflow: hidden;
+    }
+    .cta-banner::before {
+      content:''; position:absolute; inset:0; opacity:.05;
+      background: radial-gradient(circle at 30% 50%, #02A9FF 0%, transparent 60%),
+                  radial-gradient(circle at 70% 50%, #7B52F4 0%, transparent 60%);
+    }
+    .cta-banner h2 { font-size:clamp(1.6rem,3vw,2.4rem); font-weight:800; letter-spacing:-.5px; margin-bottom:14px; position:relative; }
+    .cta-banner p { color:var(--text-mid); margin-bottom:32px; font-size:1.05rem; position:relative; }
+    .cta-btns { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; position:relative; }
 
-        .code-lang {
-            color: #667eea;
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
+    /* ─── FOOTER ─────────────────────────────────────────────────── */
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: 48px 0 40px;
+    }
+    .footer-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 24px; flex-wrap: wrap;
+    }
+    .footer-brand {
+      display: flex; align-items: center; gap: 10px;
+      font-weight: 700; font-size: .95rem; color: var(--text-mid);
+      text-decoration: none;
+    }
+    .footer-brand img { width:24px; height:24px; opacity:.8; filter: brightness(0) invert(1); }
+    .footer-links {
+      display: flex; gap: 24px; flex-wrap: wrap;
+    }
+    .footer-links a {
+      color: var(--text-lo); text-decoration: none; font-size: .875rem;
+      font-weight: 500; transition: color .2s;
+    }
+    .footer-links a:hover { color: var(--al-blue); }
+    .footer-copy { color: var(--text-lo); font-size: .8rem; }
 
-        .copy-btn {
-            background: rgba(255, 255, 255, 0.1);
-            border: none;
-            color: white;
-            padding: 5px 10px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 0.8rem;
-            transition: all 0.3s ease;
-        }
+    /* ─── Responsive ─────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .features-grid { grid-template-columns: 1fr 1fr; }
+      .feat-card-wide { grid-column: span 1; flex-direction: column; }
+      .stats-inner { grid-template-columns: repeat(2,1fr); }
+      .stat-cell:nth-child(2) { border-right: none; }
+      .flow-steps { grid-template-columns: 1fr; }
+      .flow-step { border-right: none; border-bottom: 1px solid var(--border); }
+      .flow-step:last-child { border-bottom: none; }
+      .step-arrow { display:none !important; }
+    }
+    @media (max-width: 640px) {
+      .nav-links, .nav-cta { display: none; }
+      .nav-toggle { display: block; }
+      .features-grid { grid-template-columns: 1fr; }
+      .stats-inner { grid-template-columns: 1fr 1fr; }
+      .hero h1 { letter-spacing: -1px; }
+      .cta-banner { padding: 40px 24px; }
+      .footer-inner { flex-direction: column; align-items: flex-start; gap: 20px; }
+    }
 
-        .copy-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
+    /* mobile menu */
+    .mobile-menu {
+      display: none; position: fixed; inset: 64px 0 0 0; z-index: 99;
+      background: rgba(11,13,20,.96); backdrop-filter: blur(20px);
+      flex-direction: column; padding: 24px;
+      border-top: 1px solid var(--border);
+    }
+    .mobile-menu.open { display: flex; }
+    .mobile-menu a {
+      display: block; padding: 14px 0;
+      color: var(--text-mid); text-decoration: none; font-weight: 600;
+      border-bottom: 1px solid var(--border); font-size: 1.05rem;
+      transition: color .2s;
+    }
+    .mobile-menu a:hover { color: var(--al-blue); }
+    .mobile-menu-btns { display:flex; flex-direction:column; gap:12px; padding-top:24px; }
 
-        .code-content {
-            padding: 20px;
-            font-family: 'Courier New', monospace;
-            font-size: 0.9rem;
-            line-height: 1.5;
-            color: #e5e5e5;
-            overflow-x: auto;
-        }
-
-        .code-content .keyword { color: #569cd6; }
-        .code-content .string { color: #ce9178; }
-        .code-content .comment { color: #6a9955; }
-        .code-content .function { color: #dcdcaa; }
-
-        /* Stats Section */
-        .stats {
-            padding: 80px 0;
-            text-align: center;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 40px;
-        }
-
-        .stat-item {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            border-radius: 15px;
-            padding: 30px 20px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .stat-number {
-            font-size: 2.5rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 10px;
-        }
-
-        .stat-label {
-            color: rgba(255, 255, 255, 0.8);
-            font-weight: 500;
-        }
-
-        /* Footer */
-        .footer {
-            padding: 60px 0 40px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            text-align: center;
-        }
-
-        .footer-links {
-            display: flex;
-            justify-content: center;
-            gap: 30px;
-            margin-bottom: 30px;
-            flex-wrap: wrap;
-        }
-
-        .footer-links a {
-            color: rgba(255, 255, 255, 0.6);
-            text-decoration: none;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .footer-links a:hover {
-            color: #667eea;
-        }
-
-        .footer p {
-            color: rgba(255, 255, 255, 0.5);
-            margin-bottom: 20px;
-        }
-
-        .social-links {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-        }
-
-        .social-link {
-            width: 40px;
-            height: 40px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            text-decoration: none;
-            transition: all 0.3s ease;
-        }
-
-        .social-link:hover {
-            background: rgba(102, 126, 234, 0.3);
-            transform: translateY(-2px);
-        }
-
-        /* Responsive Design */
-        @media (max-width: 768px) {
-            .nav-links {
-                display: none;
-            }
-            
-            .code-container {
-                grid-template-columns: 1fr;
-            }
-            
-            .cta-buttons {
-                flex-direction: column;
-                align-items: center;
-            }
-            
-            .features-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        /* Scroll animations */
-        .fade-in {
-            opacity: 0;
-            transform: translateY(30px);
-            transition: all 0.8s ease;
-        }
-
-        .fade-in.visible {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    </style>
+    /* scroll fade-in */
+    .reveal {
+      opacity: 0; transform: translateY(24px);
+      transition: opacity .7s ease, transform .7s ease;
+    }
+    .reveal.in { opacity: 1; transform: none; }
+  </style>
 </head>
 <body>
-    <div class="bg-animation"></div>
-    
-    <!-- Header -->
-    <header class="header">
-        <nav class="nav container">
-            <div class="logo">🎌 AniProxy</div>
-            <ul class="nav-links">
-                <li><a href="#features">Features</a></li>
-                <li><a href="#docs">Docs</a></li>
-                <li><a href="#examples">Examples</a></li>
-                <li><a href="https://github.com/Itzmepromgitman/Anilist-Api" target="_blank">GitHub</a></li>
-            </ul>
-        </nav>
-    </header>
+<div class="bg-orbs">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
 
-    <!-- Hero Section -->
-    <section class="hero container">
-        <div class="api-status">
-            <span class="status-dot"></span>
-            <span>API Status: Online</span>
-        </div>
-        
-        <h1>Anilist GraphQL Proxy</h1>
-        <p>Lightning-fast serverless proxy for the Anilist API. CORS enabled, authentication support, zero configuration required.</p>
-        
-        <div class="cta-buttons">
-            <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FItzmepromgitman%2FAnilist-Api" class="btn btn-primary" target="_blank">
-                🚀 Deploy to Vercel
-            </a>
-            <a href="https://github.com/Itzmepromgitman/Anilist-Api" class="btn btn-secondary" target="_blank">
-                📚 View on GitHub
-            </a>
-        </div>
-    </section>
+<div class="wrap">
 
-    <!-- Features Section -->
-    <section id="features" class="features container fade-in">
-        <h2 class="section-title">Why Choose AniProxy?</h2>
-        <div class="features-grid">
-            <div class="feature-card">
-                <span class="feature-icon">🌐</span>
-                <h3>CORS Enabled</h3>
-                <p>Works seamlessly with web applications. No more CORS headaches when building your anime apps.</p>
-            </div>
-            <div class="feature-card">
-                <span class="feature-icon">🔐</span>
-                <h3>Authentication Ready</h3>
-                <p>Forwards authorization headers for authenticated requests. Access user-specific data with ease.</p>
-            </div>
-            <div class="feature-card">
-                <span class="feature-icon">⚡</span>
-                <h3>Lightning Fast</h3>
-                <p>Serverless architecture ensures minimal latency. Your queries execute at the speed of light.</p>
-            </div>
-            <div class="feature-card">
-                <span class="feature-icon">🛠️</span>
-                <h3>Zero Config</h3>
-                <p>Deploy in seconds with no setup required. Just click deploy and start building immediately.</p>
-            </div>
-            <div class="feature-card">
-                <span class="feature-icon">🔄</span>
-                <h3>Error Handling</h3>
-                <p>Comprehensive error logging and user-friendly responses. Debug with confidence.</p>
-            </div>
-            <div class="feature-card">
-                <span class="feature-icon">🎯</span>
-                <h3>Drop-in Replacement</h3>
-                <p>Compatible with existing Anilist implementations. Migrate your apps effortlessly.</p>
-            </div>
-        </div>
-    </section>
+  <!-- ── NAV ───────────────────────────────────────────────────── -->
+  <header class="nav-bar">
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">
+        <img src="https://anilist-6aef5d.tiiny.site/anilist.svg" alt="AniList logo" />
+        <span>AniProxy</span>
+      </a>
 
-    <!-- Code Examples -->
-    <section id="examples" class="code-section fade-in">
-        <div class="container">
-            <h2 class="section-title">Quick Start</h2>
-            <div class="code-container">
-                <div class="code-block">
-                    <div class="code-header">
-                        <span class="code-lang">JavaScript</span>
-                        <button class="copy-btn" onclick="copyCode('js-code')">Copy</button>
-                    </div>
-                    <div class="code-content" id="js-code">
-<span class="keyword">const</span> query = <span class="string">`
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#how-it-works">How it works</a></li>
+        <li><a href="#examples">Quickstart</a></li>
+      </ul>
+
+      <nav class="nav-cta">
+        <a href="https://github.com/Itzmepromgitman/Anilist-Api" target="_blank" class="btn-nav-gh">
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
+        </a>
+        <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FItzmepromgitman%2FAnilist-Api" target="_blank" class="btn-nav-deploy">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 19.5h20L12 2z"/></svg>
+          Deploy
+        </a>
+      </nav>
+
+      <button class="nav-toggle" id="navToggle" aria-label="Open menu">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- mobile menu -->
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="#features" onclick="closeMobileMenu()">Features</a>
+    <a href="#how-it-works" onclick="closeMobileMenu()">How it works</a>
+    <a href="#examples" onclick="closeMobileMenu()">Quickstart</a>
+    <div class="mobile-menu-btns">
+      <a href="https://github.com/Itzmepromgitman/Anilist-Api" target="_blank" class="btn btn-ghost" style="justify-content:center;">View on GitHub</a>
+      <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FItzmepromgitman%2FAnilist-Api" target="_blank" class="btn btn-primary" style="justify-content:center;">Deploy to Vercel</a>
+    </div>
+  </div>
+
+  <!-- ── HERO ──────────────────────────────────────────────────── -->
+  <section class="hero container">
+    <div class="hero-eyebrow">
+      <span class="hero-eyebrow-dot"></span>
+      API Proxy · Online &amp; Ready
+    </div>
+
+    <div class="hero-logo-wrap">
+      <img src="https://anilist-6aef5d.tiiny.site/anilist.svg" alt="AniList" />
+    </div>
+
+    <h1>
+      <span class="word-anilist">Anilist</span> GraphQL<br />
+      <span class="word-graphql">Proxy</span> — Zero Config
+    </h1>
+
+    <p class="hero-sub">
+      A serverless CORS bridge for the Anilist API. Drop it in, point your app at the endpoint, and ship.
+    </p>
+
+    <div class="hero-actions">
+      <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FItzmepromgitman%2FAnilist-Api" target="_blank" class="btn btn-primary">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 19.5h20L12 2z"/></svg>
+        Deploy to Vercel
+      </a>
+      <a href="https://github.com/Itzmepromgitman/Anilist-Api" target="_blank" class="btn btn-ghost">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        View Source
+      </a>
+    </div>
+
+    <div class="endpoint-chip" title="Click to copy">
+      <span class="endpoint-method">POST</span>
+      <span class="endpoint-url" id="endpointUrl">https://your-deploy.vercel.app/api/graphql</span>
+      <button class="endpoint-copy" id="endpointCopy" title="Copy endpoint">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+      </button>
+    </div>
+  </section>
+
+  <!-- ── STATS ──────────────────────────────────────────────────── -->
+  <div class="stats-strip reveal">
+    <div class="stats-inner">
+      <div class="stat-cell">
+        <span class="stat-val">99.9%</span>
+        <span class="stat-lbl">Uptime</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-val">&lt;50ms</span>
+        <span class="stat-lbl">Avg. Latency</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-val">0</span>
+        <span class="stat-lbl">Config Required</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-val">∞</span>
+        <span class="stat-lbl">Scalability</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FEATURES ───────────────────────────────────────────────── -->
+  <section id="features" class="section container">
+    <div class="section-head reveal">
+      <span class="eyebrow">Features</span>
+      <h2>Everything your anime app needs</h2>
+      <p>AniProxy sits between your frontend and Anilist's GraphQL API — handling CORS, auth headers, and errors so you don't have to.</p>
+    </div>
+
+    <div class="features-grid reveal">
+      <div class="feat-card feat-card-wide">
+        <div class="feat-icon">🌐</div>
+        <div>
+          <h3>CORS — fully resolved</h3>
+          <p>Browser security blocks direct calls to external APIs. AniProxy runs on your own domain, returning permissive CORS headers so any web client can query Anilist without a single browser warning or preflight error.</p>
+        </div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">🔐</div>
+        <h3>Auth header passthrough</h3>
+        <p>Forwards your <code style="font-family:'JetBrains Mono',monospace;font-size:.82em;color:var(--al-cyan)">Authorization</code> header verbatim so private user data and mutations work exactly as they do against Anilist directly.</p>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">⚡</div>
+        <h3>Serverless — edge-fast</h3>
+        <p>Deployed as a Vercel serverless function. Cold-start is under 100 ms; warm requests typically sit below 50 ms end-to-end.</p>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">🔄</div>
+        <h3>Structured error responses</h3>
+        <p>Surfaces Anilist GraphQL errors, network failures, and malformed payloads as consistent JSON — making client-side debugging straightforward.</p>
+      </div>
+      <div class="feat-card feat-card-wide">
+        <div class="feat-icon">🎯</div>
+        <div>
+          <h3>Drop-in replacement</h3>
+          <p>The proxy is request/response-compatible with <code style="font-family:'JetBrains Mono',monospace;font-size:.82em;color:var(--al-cyan)">graphql.anilist.co</code>. Change one URL in your existing code and you're done — no schema changes, no new client libraries.</p>
+        </div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">🚀</div>
+        <h3>One-click deploy</h3>
+        <p>Clones the repo and deploys to Vercel in about 30 seconds. No env vars, no build config, nothing to set up.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── HOW IT WORKS ───────────────────────────────────────────── -->
+  <section id="how-it-works" class="section" style="background:var(--surface-1); padding:96px 0;">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="eyebrow">How it works</span>
+        <h2>Simple by design</h2>
+        <p>Three steps from idea to live proxy endpoint.</p>
+      </div>
+
+      <div class="flow-steps reveal">
+        <div class="flow-step">
+          <span class="step-num">Step 01</span>
+          <h3>Deploy</h3>
+          <p>Click "Deploy to Vercel". The repo is cloned and a serverless function is provisioned automatically — no local setup or env vars needed.</p>
+          <div class="step-arrow">→</div>
+        </div>
+        <div class="flow-step">
+          <span class="step-num">Step 02</span>
+          <h3>Point your app</h3>
+          <p>Swap <code style="font-family:'JetBrains Mono',monospace;font-size:.82em;color:var(--al-cyan)">graphql.anilist.co</code> for your Vercel URL + <code style="font-family:'JetBrains Mono',monospace;font-size:.82em;color:var(--al-cyan)">/api/graphql</code> in your client code. That's the only change.</p>
+          <div class="step-arrow">→</div>
+        </div>
+        <div class="flow-step">
+          <span class="step-num">Step 03</span>
+          <h3>Ship</h3>
+          <p>Every GraphQL query and mutation routes through the proxy. CORS is handled, errors are structured, and Anilist's full API surface is available.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CODE EXAMPLES ──────────────────────────────────────────── -->
+  <section id="examples" class="code-section">
+    <div class="container">
+      <div class="section-head reveal">
+        <span class="eyebrow">Quickstart</span>
+        <h2>Start querying in seconds</h2>
+        <p>Copy, paste, replace the URL — and you're querying Anilist from any browser.</p>
+      </div>
+
+      <div class="reveal">
+        <div class="tab-bar">
+          <button class="tab active" onclick="switchTab('js')">JavaScript</button>
+          <button class="tab" onclick="switchTab('curl')">cURL</button>
+          <button class="tab" onclick="switchTab('python')">Python</button>
+        </div>
+
+        <div class="code-panels">
+          <!-- JS -->
+          <div class="code-panel active" id="panel-js">
+            <div class="code-block">
+              <div class="code-top">
+                <div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div>
+                <span class="code-file">query.js</span>
+                <button class="copy-btn" onclick="copyPanel('panel-js')">
+                  <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                  Copy
+                </button>
+              </div>
+              <div class="code-body" id="code-js"><span class="kw">const</span> <span class="fn">query</span> = <span class="str">`
   query ($id: Int) {
-    Media (id: $id, type: ANIME) {
+    Media(id: $id, type: ANIME) {
       id
-      title {
-        romaji
-        english
-      }
+      title { romaji english }
       description
       episodes
       averageScore
@@ -538,150 +700,189 @@
   }
 `</span>;
 
-<span class="keyword">const</span> variables = { id: <span class="string">15125</span> };
+<span class="kw">const</span> response = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">'https://your-deploy.vercel.app/api/graphql'</span>, {
+  method: <span class="str">'POST'</span>,
+  headers: { <span class="str">'Content-Type'</span>: <span class="str">'application/json'</span> },
+  body: JSON.<span class="fn">stringify</span>({ query, variables: { id: <span class="str">15125</span> } }),
+});
 
-<span class="function">fetch</span>(<span class="string">'https://anilist.vercel.app/api/graphql'</span>, {
-  <span class="keyword">method</span>: <span class="string">'POST'</span>,
-  <span class="keyword">headers</span>: {
-    <span class="string">'Content-Type'</span>: <span class="string">'application/json'</span>,
-  },
-  <span class="keyword">body</span>: JSON.<span class="function">stringify</span>({
-    query,
-    variables
-  })
-})
-.<span class="function">then</span>(response => response.<span class="function">json</span>())
-.<span class="function">then</span>(data => console.<span class="function">log</span>(data));
-                    </div>
-                </div>
-                
-                <div class="code-block">
-                    <div class="code-header">
-                        <span class="code-lang">cURL</span>
-                        <button class="copy-btn" onclick="copyCode('curl-code')">Copy</button>
-                    </div>
-                    <div class="code-content" id="curl-code">
-<span class="function">curl</span> -X POST \
-  https://anilist.vercel.app/api/graphql \
-  -H <span class="string">'Content-Type: application/json'</span> \
-  -d <span class="string">'{
-    "query": "query { 
-      Page(perPage: 5) { 
-        media(type: ANIME, sort: POPULARITY_DESC) { 
-          title { romaji } 
-          averageScore 
-        } 
-      } 
-    }"
-  }'</span>
-                    </div>
-                </div>
+<span class="kw">const</span> { data } = <span class="kw">await</span> response.<span class="fn">json</span>();
+console.<span class="fn">log</span>(data.Media.title.romaji); <span class="cm">// "Fullmetal Alchemist: Brotherhood"</span></div>
             </div>
+          </div>
+          </div>
+
+          <!-- cURL -->
+          <div class="code-panel" id="panel-curl">
+            <div class="code-block">
+              <div class="code-top">
+                <div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div>
+                <span class="code-file">terminal</span>
+                <button class="copy-btn" onclick="copyPanel('panel-curl')">
+                  <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                  Copy
+                </button>
+              </div>
+              <div class="code-body" id="code-curl"><span class="fn">curl</span> -X POST \
+  https://your-deploy.vercel.app/api/graphql \
+  -H <span class="str">'Content-Type: application/json'</span> \
+  -d <span class="str">'{
+    "query": "query { Page(perPage: 5) { media(type: ANIME, sort: POPULARITY_DESC) { title { romaji } averageScore } } }"
+  }'</span></div>
+            </div>
+          </div>
+
+          <!-- Python -->
+          <div class="code-panel" id="panel-python">
+            <div class="code-block">
+              <div class="code-top">
+                <div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div>
+                <span class="code-file">query.py</span>
+                <button class="copy-btn" onclick="copyPanel('panel-python')">
+                  <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                  Copy
+                </button>
+              </div>
+              <div class="code-body" id="code-python"><span class="kw">import</span> requests
+
+query = <span class="str">"""
+  query ($id: Int) {
+    Media(id: $id, type: ANIME) {
+      id
+      title { romaji english }
+      averageScore
+    }
+  }
+"""</span>
+
+response = requests.<span class="fn">post</span>(
+    <span class="str">'https://your-deploy.vercel.app/api/graphql'</span>,
+    json={<span class="str">'query'</span>: query, <span class="str">'variables'</span>: {<span class="str">'id'</span>: <span class="str">15125</span>}},
+)
+
+data = response.<span class="fn">json</span>()[<span class="str">'data'</span>][<span class="str">'Media'</span>]
+<span class="fn">print</span>(data[<span class="str">'title'</span>][<span class="str">'romaji'</span>])  <span class="cm"># Fullmetal Alchemist: Brotherhood</span></div>
+            </div>
+          </div>
         </div>
-    </section>
+      </div>
+    </div>
+  </section>
 
-    <!-- Stats Section -->
-    <section class="stats container fade-in">
-        <h2 class="section-title">Trusted by Developers</h2>
-        <div class="stats-grid">
-            <div class="stat-item">
-                <div class="stat-number">99.9%</div>
-                <div class="stat-label">Uptime</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-number">< 50ms</div>
-                <div class="stat-label">Avg Response</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-number">0</div>
-                <div class="stat-label">Configuration</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-number">∞</div>
-                <div class="stat-label">Scalability</div>
-            </div>
-        </div>
-    </section>
+  <!-- ── CTA ────────────────────────────────────────────────────── -->
+  <section class="section container">
+    <div class="cta-banner reveal">
+      <h2>Ready to build your anime app?</h2>
+      <p>One deploy. One URL change. Full Anilist API access from any browser.</p>
+      <div class="cta-btns">
+        <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FItzmepromgitman%2FAnilist-Api" target="_blank" class="btn btn-primary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 19.5h20L12 2z"/></svg>
+          Deploy to Vercel — free
+        </a>
+        <a href="https://anilist.gitbook.io/anilist-apiv2-docs/" target="_blank" class="btn btn-ghost">
+          Anilist API Docs ↗
+        </a>
+      </div>
+    </div>
+  </section>
 
-    <!-- Footer -->
-    <footer class="footer container">
-        <div class="footer-links">
-            <a href="/api/graphql" target="_blank">🔗 API Endpoint</a>
-            <a href="https://github.com/Itzmepromgitman/Anilist-Api" target="_blank">📖 Documentation</a>
-            <a href="https://anilist.gitbook.io/anilist-apiv2-docs/" target="_blank">🎌 Anilist Docs</a>
-            <a href="https://github.com/Itzmepromgitman/Anilist-Api/issues" target="_blank">🐛 Report Issues</a>
-        </div>
-        
-        <p>Built with ❤️ for the anime community</p>
-        
-        <div class="social-links">
-            <a href="https://github.com/Itzmepromgitman/Anilist-Api" target="_blank" class="social-link">
-                <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                </svg>
-            </a>
-        </div>
-    </footer>
+  <!-- ── FOOTER ─────────────────────────────────────────────────── -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <a href="#" class="footer-brand">
+        <img src="https://anilist-6aef5d.tiiny.site/anilist.svg" alt="AniList" />
+        AniProxy
+      </a>
+      <div class="footer-links">
+        <a href="/api/graphql" target="_blank">API Endpoint</a>
+        <a href="https://github.com/Itzmepromgitman/Anilist-Api" target="_blank">GitHub</a>
+        <a href="https://anilist.gitbook.io/anilist-apiv2-docs/" target="_blank">Anilist Docs</a>
+        <a href="https://github.com/Itzmepromgitman/Anilist-Api/issues" target="_blank">Report Issue</a>
+      </div>
+      <span class="footer-copy">Built for the anime community</span>
+    </div>
+  </footer>
 
-    <script>
-        // Copy code functionality
-        function copyCode(elementId) {
-            const code = document.getElementById(elementId).textContent;
-            navigator.clipboard.writeText(code.trim()).then(() => {
-                const btn = event.target;
-                const originalText = btn.textContent;
-                btn.textContent = 'Copied!';
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                }, 2000);
-            });
-        }
+</div><!-- .wrap -->
 
-        // Smooth scrolling for navigation links
-        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-            anchor.addEventListener('click', function (e) {
-                e.preventDefault();
-                const target = document.querySelector(this.getAttribute('href'));
-                if (target) {
-                    target.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'start'
-                    });
-                }
-            });
-        });
+<script>
+  /* ── Mobile menu ─────────────────────────────────────────────── */
+  const toggle = document.getElementById('navToggle');
+  const mobileMenu = document.getElementById('mobileMenu');
+  toggle.addEventListener('click', () => mobileMenu.classList.toggle('open'));
+  function closeMobileMenu() { mobileMenu.classList.remove('open'); }
 
-        // Fade in animation on scroll
-        const observerOptions = {
-            threshold: 0.1,
-            rootMargin: '0px 0px -50px 0px'
-        };
+  /* ── Code tabs ───────────────────────────────────────────────── */
+  function switchTab(lang) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.code-panel').forEach(p => p.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById('panel-' + lang).classList.add('active');
+  }
 
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('visible');
-                }
-            });
-        }, observerOptions);
+  /* ── Copy panel ──────────────────────────────────────────────── */
+  function copyPanel(panelId) {
+    const btn = event.currentTarget;
+    const panel = document.getElementById(panelId);
+    const codeId = panelId.replace('panel-', 'code-');
+    const text = document.getElementById(codeId).innerText;
+    navigator.clipboard.writeText(text.trim()).then(() => {
+      btn.classList.add('copied');
+      btn.innerHTML = `<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Copied!`;
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        btn.innerHTML = `<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy`;
+      }, 2200);
+    });
+  }
 
-        document.querySelectorAll('.fade-in').forEach(el => {
-            observer.observe(el);
-        });
+  /* ── Endpoint copy ───────────────────────────────────────────── */
+  document.getElementById('endpointCopy').addEventListener('click', () => {
+    const url = document.getElementById('endpointUrl').textContent;
+    navigator.clipboard.writeText(url).then(() => {
+      const btn = document.getElementById('endpointCopy');
+      btn.innerHTML = `<svg width="14" height="14" fill="none" stroke="#22c55e" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>`;
+      setTimeout(() => {
+        btn.innerHTML = `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`;
+      }, 2000);
+    });
+  });
 
-        // Update API endpoint dynamically
-        const currentDomain = window.location.hostname;
-        if (currentDomain !== 'localhost') {
-            const apiLinks = document.querySelectorAll('a[href*="anilist.vercel.app"]');
-            apiLinks.forEach(link => {
-                link.href = link.href.replace('anilist.vercel.app', currentDomain);
-            });
-            
-            const codeBlocks = document.querySelectorAll('.code-content');
-            codeBlocks.forEach(block => {
-                block.innerHTML = block.innerHTML.replace('anilist.vercel.app', currentDomain);
-            });
-        }
-    </script>
+  /* ── Dynamic URL replacement ─────────────────────────────────── */
+  const host = window.location.hostname;
+  if (host && host !== 'localhost' && !host.includes('tiiny')) {
+    const dynamicUrl = 'https://' + host + '/api/graphql';
+    document.getElementById('endpointUrl').textContent = dynamicUrl;
+    document.querySelectorAll('.code-body').forEach(block => {
+      block.innerHTML = block.innerHTML.replace(/https:\/\/your-deploy\.vercel\.app\/api\/graphql/g, dynamicUrl);
+    });
+  }
+
+  /* ── Smooth scroll for anchor links ─────────────────────────── */
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      const target = document.querySelector(a.getAttribute('href'));
+      if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    });
+  });
+
+  /* ── Scroll reveal ───────────────────────────────────────────── */
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in');
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+
+  document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+  /* ── Reduced motion ──────────────────────────────────────────── */
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.querySelectorAll('.reveal').forEach(el => el.classList.add('in'));
+    document.querySelectorAll('.orb, .hero-logo-wrap img').forEach(el => el.style.animation = 'none');
+  }
+</script>
 </body>
 </html>

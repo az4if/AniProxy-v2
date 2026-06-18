@@ -58,7 +58,8 @@ On a **429 from AniList**:
 - The proxy waits — using AniList's own `Retry-After` header if one was sent, otherwise an exponential back-off (300 ms → 600 ms → 1 200 ms)
 - It retries on the next non-exhausted identity, up to **3 retries** (4 attempts total) before returning the 429 to the client
 
-> **Important — what this pool does and doesn't do:** the identity pool and its counters are an **in-memory, per-instance, best-effort local throttle**. They are not shared across the multiple serverless instances Vercel may run concurrently, and they reset whenever an instance cold-starts. Rotating the `User-Agent` string also does **not** change the underlying network connection — all 6 identities still go out from the same instance's IP. If AniList's rate limiting keys off IP address or auth token rather than `User-Agent`, the pool does not multiply your real quota with AniList; what it reliably gives you is request pacing and automatic retry/back-off on 429s, not a verified throughput multiplier. Treat any "effective req/min" figure as a theoretical local ceiling, not a guaranteed number against AniList's actual enforcement.
+> [!IMPORTANT]
+> **What this pool does and doesn't do:** the identity pool and its counters are an **in-memory, per-instance, best-effort local throttle**. They are not shared across the multiple serverless instances Vercel may run concurrently, and they reset whenever an instance cold-starts. Rotating the `User-Agent` string also does **not** change the underlying network connection — all 6 identities still go out from the same instance's IP. If AniList's rate limiting keys off IP address or auth token rather than `User-Agent`, the pool does not multiply your real quota with AniList; what it reliably gives you is request pacing and automatic retry/back-off on 429s, not a verified throughput multiplier. Treat any "effective req/min" figure as a theoretical local ceiling, not a guaranteed number against AniList's actual enforcement.
 
 ### Upstash Redis caching
 
@@ -104,7 +105,8 @@ flowchart TD
     J1 --> K
 ```
 
-> Note the asymmetry: `X-Pool-Stats` (debug mode) is only attached on the **authenticated/mutation** branch, since that's the only branch that returns *after* the pool-stats block in the code. It is not attached to anonymous cached or cache-miss responses.
+> [!NOTE]
+> `X-Pool-Stats` (debug mode) is only attached on the **authenticated/mutation** branch, since that's the only branch that returns *after* the pool-stats block in the code. It is not attached to anonymous cached or cache-miss responses.
 
 ---
 
@@ -194,7 +196,8 @@ Copy `.env.example` to `.env.local` for local dev, or set these in your Vercel p
 | `CACHE_TTL_SECONDS` | `300` | No | Cache expiry in seconds (default 5 min) |
 | `DEBUG` | `false` | No | Set `true` to expose the `X-Pool-Stats` header on authenticated/mutation responses |
 
-> ⚠️ If you're updating from an earlier copy of `.env.example`: the `DEBUG` comment there previously referenced an `X-Rate-Limit-Used` header. The code only ever sets `X-Pool-Stats` — update your local `.env.example` comment to match.
+> [!WARNING]
+> If you're updating from an earlier copy of `.env.example`: the `DEBUG` comment there previously referenced an `X-Rate-Limit-Used` header. The code only ever sets `X-Pool-Stats` — update your local `.env.example` comment to match.
 
 ### Getting Upstash credentials
 
@@ -245,4 +248,4 @@ The proxy paces itself against a slightly lower per-identity threshold (55 / 85)
 
 ## 📄 License
 
-[MIT](./LICENSE)
+Check the [MIT](https://github.com/az4if/AniProxy-v2/blob/main/LICENSE) License
